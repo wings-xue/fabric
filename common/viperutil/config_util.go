@@ -32,6 +32,9 @@ var logger = flogging.MustGetLogger("viperutil")
 
 // ConfigPaths returns the paths from environment and
 // defaults which are CWD and /etc/hyperledger/fabric.
+// 1. 从环境变量获取配置路径
+// 2. 从当前路径获取
+// 3. 从etc/hyperledger/fabric获取
 func ConfigPaths() []string {
 	var paths []string
 	if p := os.Getenv("FABRIC_CFG_PATH"); p != "" {
@@ -44,6 +47,10 @@ func ConfigPaths() []string {
 // It keeps the config file directory locations and env variables.
 // From the file the config is unmarshalled and stored.
 // Currently "yaml" is supported.
+// configParser维护配置文件位置
+// 它保存配置文件路径和环境变量
+// 从文件配置被加载和存储
+// 目前yaml被支持
 type ConfigParser struct {
 	// configuration file to process
 	configPaths []string
@@ -80,9 +87,11 @@ func (c *ConfigParser) ConfigFileUsed() string {
 }
 
 // Search for the existence of filename for all supported extensions
+// 从路径中查找 orderer.yaml 和 orderer.yml配置文件路径
 func (c *ConfigParser) searchInPath(in string) (filename string) {
 	var supportedExts []string = []string{"yaml", "yml"}
 	for _, ext := range supportedExts {
+
 		fullPath := filepath.Join(in, c.configName+"."+ext)
 		_, err := os.Stat(fullPath)
 		if err == nil {
@@ -93,6 +102,7 @@ func (c *ConfigParser) searchInPath(in string) (filename string) {
 }
 
 // Search for the configName in all configPaths
+// 从当前路径和/etc/hyperledger/fabric寻找相应的配置文件
 func (c *ConfigParser) findConfigFile() string {
 	paths := c.configPaths
 	if len(paths) == 0 {
@@ -110,29 +120,37 @@ func (c *ConfigParser) findConfigFile() string {
 // Get the valid and present config file
 func (c *ConfigParser) getConfigFile() string {
 	// if explicitly set, then use it
+	// 如果configFile已经存在，直接返回
+	// 应该第二次就是已经存在的
 	if c.configFile != "" {
 		return c.configFile
 	}
 
+	//
 	c.configFile = c.findConfigFile()
 	return c.configFile
 }
 
 // ReadInConfig reads and unmarshals the config file.
+// 感觉在初始化配置信息，主要是配置的数据
 func (c *ConfigParser) ReadInConfig() error {
+	// 从当前路径和/etc/hyperledger/fabric获取配置文件
 	cf := c.getConfigFile()
+	// 打开配置文件
 	logger.Debugf("Attempting to open the config file: %s", cf)
+	// 这里的配置文件好像是默认的配置文件
 	file, err := os.Open(cf)
 	if err != nil {
 		logger.Errorf("Unable to open the config file: %s", cf)
 		return err
 	}
 	defer file.Close()
-
+	// 读取配置文件
 	return c.ReadConfig(file)
 }
 
 // ReadConfig parses the buffer and initializes the config.
+// ReadConfig 初始化config
 func (c *ConfigParser) ReadConfig(in io.Reader) error {
 	return yaml.NewDecoder(in).Decode(c.config)
 }
@@ -413,11 +431,15 @@ func bccspHook(f reflect.Type, t reflect.Type, data interface{}) (interface{}, e
 // EnhancedExactUnmarshal is intended to unmarshal a config file into a structure
 // producing error when extraneous variables are introduced and supporting
 // the time.Duration type
+// EnhancedExactUnmarshal倾向于结构一个配置文件到一个结构体
+// 当没有预期的变量被引入和支持time.Duration类型的时候产生错误
 func (c *ConfigParser) EnhancedExactUnmarshal(output interface{}) error {
 	oType := reflect.TypeOf(output)
+	// 必须是一个指针
 	if oType.Kind() != reflect.Ptr {
 		return errors.Errorf("supplied output argument must be a pointer to a struct but is not pointer")
 	}
+	// 比如是一个结构体指针
 	eType := oType.Elem()
 	if eType.Kind() != reflect.Struct {
 		return errors.Errorf("supplied output argument must be a pointer to a struct, but it is pointer to something else")

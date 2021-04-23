@@ -50,25 +50,31 @@ var (
 )
 
 // ServerConfig defines the parameters for configuring a GRPCServer instance
+// ServerConfig 定义参数对于配置一个GRPC服务实例
 type ServerConfig struct {
 	// ConnectionTimeout specifies the timeout for connection establishment
 	// for all new connections
 	ConnectionTimeout time.Duration
 	// SecOpts defines the security parameters
+	// 加密
 	SecOpts SecureOptions
 	// KaOpts defines the keepalive parameters
+	// 连接时间
 	KaOpts KeepaliveOptions
 	// StreamInterceptors specifies a list of interceptors to apply to
 	// streaming RPCs.  They are executed in order.
+	// StreamInterceptors定义了一系列streaming RPCs， 他们别order执行
 	StreamInterceptors []grpc.StreamServerInterceptor
 	// UnaryInterceptors specifies a list of interceptors to apply to unary
 	// RPCs.  They are executed in order.
+	// 一元运算
 	UnaryInterceptors []grpc.UnaryServerInterceptor
 	// Logger specifies the logger the server will use
 	Logger *flogging.FabricLogger
 	// HealthCheckEnabled enables the gRPC Health Checking Protocol for the server
 	HealthCheckEnabled bool
 	// ServerStatsHandler should be set if metrics on connections are to be reported.
+	// 服务指标收集
 	ServerStatsHandler *ServerStatsHandler
 }
 

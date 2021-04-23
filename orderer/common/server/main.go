@@ -74,36 +74,47 @@ func Main() {
 	fullCmd := kingpin.MustParse(app.Parse(os.Args[1:]))
 
 	// "version" command
+	// version命令
+	// 打印版本信息
 	if fullCmd == version.FullCommand() {
 		fmt.Println(metadata.GetVersionInfo())
 		return
 	}
 
+	// 加载配置文件
 	conf, err := localconfig.Load()
 	if err != nil {
 		logger.Error("failed to parse config: ", err)
 		os.Exit(1)
 	}
+	// 初始化日志文件
 	initializeLogging()
 
+	// 打印配置文件
 	prettyPrintStruct(conf)
 
+	// 加密模块
 	cryptoProvider := factory.GetDefault()
 
+	// 获取身份签名，基于配置
 	signer, signErr := loadLocalMSP(conf).GetDefaultSigningIdentity()
 	if signErr != nil {
 		logger.Panicf("Failed to get local MSP identity: %s", signErr)
 	}
 
+	// 开启operation服务器
 	opsSystem := newOperationsSystem(conf.Operations, conf.Metrics)
 	if err = opsSystem.Start(); err != nil {
 		logger.Panicf("failed to start operations subsystem: %s", err)
 	}
 	defer opsSystem.Stop()
+	// 材料提供
 	metricsProvider := opsSystem.Provider
+	// 日志观察者
 	logObserver := floggingmetrics.NewObserver(metricsProvider)
 	flogging.SetObserver(logObserver)
 
+	// grpc配置
 	serverConfig := initializeServerConfig(conf, metricsProvider)
 	grpcServer := initializeGrpcServer(conf, serverConfig)
 	caMgr := &caManager{
@@ -112,6 +123,7 @@ func Main() {
 		clientRootCAs:         serverConfig.SecOpts.ClientRootCAs,
 	}
 
+	// 创建账本
 	lf, err := createLedgerFactory(conf, metricsProvider)
 	if err != nil {
 		logger.Panicf("Failed to create ledger factory: %v", err)
@@ -146,10 +158,13 @@ func Main() {
 	}
 
 	// select the highest numbered block among the bootstrap block and the last config block if the system channel.
+	// 选择更高数量的block在boostrap block和最后配置block
 	sysChanConfigBlock := extractSystemChannel(lf, cryptoProvider)
+	// 选择clusterblock
 	clusterBootBlock := selectClusterBootBlock(bootstrapBlock, sysChanConfigBlock)
 
 	// determine whether the orderer is of cluster type
+	// 判断orderer的类型
 	var isClusterType bool
 	if clusterBootBlock == nil {
 		logger.Infof("Starting without a system channel")
@@ -166,6 +181,7 @@ func Main() {
 	}
 
 	// configure following artifacts properly if orderer is of cluster type
+	// 配置集群参数
 	var repInitiator *onboarding.ReplicationInitiator
 	clusterServerConfig := serverConfig
 	clusterGRPCServer := grpcServer // by default, cluster shares the same grpc server
@@ -175,6 +191,7 @@ func Main() {
 	var reuseGrpcListener bool
 	var serversToUpdate []*comm.GRPCServer
 
+	//
 	if isClusterType {
 		logger.Infof("Setting up cluster")
 		clusterClientConfig, reuseGrpcListener = initializeClusterClientConfig(conf)
@@ -188,16 +205,20 @@ func Main() {
 
 		// If we have a separate gRPC server for the cluster,
 		// we need to update its TLS CA certificate pool.
+		// 如果我们有一个分离的gRPC服务对于集群，我们需要更新他的TLS CA 证书池
 		serversToUpdate = append(serversToUpdate, clusterGRPCServer)
 
 		// If the orderer has a system channel and is of cluster type, it may have
 		// to replicate first.
+		// 如果orderer有一个系统channel并且是集群类型，首先复制他
 		if clusterBootBlock != nil {
 			// When we are bootstrapping with a clusterBootBlock with number >0,
 			// replication will be performed. Only clusters that are equipped with
 			// a recent config block (number i.e. >0) can replicate. This will
 			// replicate all channels if the clusterBootBlock number > system-channel
 			// height (i.e. there is a gap in the ledger).
+			// 当我们初始化一个集群
+
 			repInitiator = onboarding.NewReplicationInitiator(lf, clusterBootBlock, conf, clusterClientConfig.SecOpts, signer, cryptoProvider)
 			repInitiator.ReplicateIfNeeded(clusterBootBlock)
 			// With BootstrapMethod == "none", the bootstrapBlock comes from a
@@ -209,12 +230,15 @@ func Main() {
 		}
 	}
 
+	// 身份标识
 	identityBytes, err := signer.Serialize()
 	if err != nil {
 		logger.Panicf("Failed serializing signing identity: %v", err)
 	}
 
+	// 日志
 	expirationLogger := flogging.MustGetLogger("certmonitor")
+	// 加密模块
 	crypto.TrackExpiration(
 		serverConfig.SecOpts.UseTLS,
 		serverConfig.SecOpts.Certificate,
@@ -227,10 +251,13 @@ func Main() {
 
 	// if cluster is reusing client-facing server, then it is already
 	// appended to serversToUpdate at this point.
+	// 如果一个集群被重新使用
 	if grpcServer.MutualTLSRequired() && !reuseGrpcListener {
 		serversToUpdate = append(serversToUpdate, grpcServer)
 	}
 
+	// 书上有
+	// tlsCallback
 	tlsCallback := func(bundle *channelconfig.Bundle) {
 		logger.Debug("Executing callback to update root CAs")
 		caMgr.updateTrustedRoots(bundle, serversToUpdate...)
@@ -242,6 +269,7 @@ func Main() {
 		}
 	}
 
+	// 初始化channel注册器
 	manager := initializeMultichannelRegistrar(
 		clusterBootBlock,
 		repInitiator,
@@ -257,6 +285,7 @@ func Main() {
 		tlsCallback,
 	)
 
+	// adminServer是做什么的
 	adminServer := newAdminServer(conf.Admin)
 	adminServer.RegisterHandler(
 		channelparticipation.URLBaseV1,
@@ -268,6 +297,7 @@ func Main() {
 	}
 	defer adminServer.Stop()
 
+	// tls 服务
 	mutualTLS := serverConfig.SecOpts.UseTLS && serverConfig.SecOpts.RequireClientCert
 	server := NewServer(
 		manager,
@@ -278,6 +308,7 @@ func Main() {
 		conf.General.Authentication.NoExpirationChecks,
 	)
 
+	// 添加路由
 	logger.Infof("Starting %s", metadata.GetVersionInfo())
 	handleSignals(addPlatformSignals(map[os.Signal]func(){
 		syscall.SIGTERM: func() {
@@ -288,6 +319,7 @@ func Main() {
 		},
 	}))
 
+	// 集群启动
 	if !reuseGrpcListener && isClusterType {
 		logger.Info("Starting cluster listener on", clusterGRPCServer.Address())
 		go clusterGRPCServer.Start()
@@ -638,6 +670,7 @@ func initializeServerConfig(conf *localconfig.TopLevel, metricsProvider metrics.
 	kaOpts := comm.DefaultKeepaliveOptions
 	// keepalive settings
 	// ServerMinInterval must be greater than 0
+	// 最小间隔必须大于0
 	if conf.General.Keepalive.ServerMinInterval > time.Duration(0) {
 		kaOpts.ServerMinInterval = conf.General.Keepalive.ServerMinInterval
 	}
@@ -736,6 +769,7 @@ func consensusType(genesisBlock *cb.Block, bccsp bccsp.BCCSP) string {
 	return ordConf.ConsensusType()
 }
 
+// 这里真正启动grpc
 func initializeGrpcServer(conf *localconfig.TopLevel, serverConfig comm.ServerConfig) *comm.GRPCServer {
 	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", conf.General.ListenAddress, conf.General.ListenPort))
 	if err != nil {
@@ -905,6 +939,7 @@ func newAdminServer(admin localconfig.Admin) *fabhttp.Server {
 }
 
 // caMgr manages certificate authorities scoped by channel
+// 通过channel管理证书
 type caManager struct {
 	sync.Mutex
 	appRootCAsByChain     map[string][][]byte

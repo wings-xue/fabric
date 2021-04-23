@@ -20,35 +20,63 @@ import (
 var logger = flogging.MustGetLogger("localconfig")
 
 // TopLevel directly corresponds to the orderer config YAML.
+// TopLevel orderer config yaml的配置对象
 type TopLevel struct {
-	General              General
-	FileLedger           FileLedger
-	Kafka                Kafka
-	Debug                Debug
-	Consensus            interface{}
-	Operations           Operations
-	Metrics              Metrics
+	// 通过用配置
+	General General
+	// 文件账本
+	FileLedger FileLedger
+	// kafka的配置信息，应该是不用了吧
+	Kafka Kafka
+	// Debug配置信息
+	Debug Debug
+	// 共识
+	Consensus interface{}
+	// 操作服务器
+	Operations Operations
+	// 指标
+	Metrics Metrics
+	//https://hyperledger-fabric.readthedocs.io/fr/latest/deployorderer/ordererchecklist.html#channelparticipation
+	// 初始化的一些设置,系统区块,区块迁移
 	ChannelParticipation ChannelParticipation
-	Admin                Admin
+	// Admin地址
+	Admin Admin
 }
 
 // General contains config which should be common among all orderer types.
+// General包含了通用配置在所有orderer类型
 type General struct {
-	ListenAddress     string
-	ListenPort        uint16
-	TLS               TLS
-	Cluster           Cluster
-	Keepalive         Keepalive
+	// 监听地址
+	ListenAddress string
+	// 监听端口
+	ListenPort uint16
+	// TLS配置
+	TLS TLS
+	// 集群
+	Cluster Cluster
+	// 保持时间
+	Keepalive Keepalive
+	// 连接超时
 	ConnectionTimeout time.Duration
-	GenesisMethod     string // For compatibility only, will be replaced by BootstrapMethod
-	GenesisFile       string // For compatibility only, will be replaced by BootstrapFile
-	BootstrapMethod   string
-	BootstrapFile     string
-	Profile           Profile
-	LocalMSPDir       string
-	LocalMSPID        string
-	BCCSP             *bccsp.FactoryOpts
-	Authentication    Authentication
+	// 为了兼容性已经提花为BootstrapMethod,
+	// 应该是为了语意吧
+	GenesisMethod string // For compatibility only, will be replaced by BootstrapMethod
+	// 为了兼容性，已经替换为BootstrapFile
+	GenesisFile string // For compatibility only, will be replaced by BootstrapFile
+	// 创世区块 函数
+	BootstrapMethod string
+	// 创世区块 文件
+	BootstrapFile string
+	// 性能测试
+	Profile Profile
+	// 本地MSPDir
+	LocalMSPDir string
+	// 本地MSP id
+	LocalMSPID string
+	// 加密接口
+	BCCSP *bccsp.FactoryOpts
+	// 认证服务
+	Authentication Authentication
 }
 
 type Cluster struct {
@@ -79,13 +107,21 @@ type Keepalive struct {
 }
 
 // TLS contains configuration for TLS connections.
+// TLS 配置
 type TLS struct {
-	Enabled               bool
-	PrivateKey            string
-	Certificate           string
-	RootCAs               []string
-	ClientAuthRequired    bool
-	ClientRootCAs         []string
+	// 不知道是什么
+	Enabled bool
+	// 私钥
+	PrivateKey string
+	// 证书
+	Certificate string
+	// 根证书
+	RootCAs []string
+	// client认证是否需要
+	ClientAuthRequired bool
+	// client 根证书
+	ClientRootCAs []string
+	// TLS握手时间
 	TLSHandshakeTimeShift time.Duration
 }
 
@@ -98,24 +134,30 @@ type SASLPlain struct {
 
 // Authentication contains configuration parameters related to authenticating
 // client messages.
+// 认证服务
 type Authentication struct {
 	TimeWindow         time.Duration
 	NoExpirationChecks bool
 }
 
 // Profile contains configuration for Go pprof profiling.
+// 好像是性能测试
 type Profile struct {
 	Enabled bool
 	Address string
 }
 
 // FileLedger contains configuration for the file-based ledger.
+// Fileledger包含配置基于文件的账本
 type FileLedger struct {
+	// 位置
 	Location string
-	Prefix   string // For compatibility only. This setting is no longer supported.
+	// 前缀
+	Prefix string // For compatibility only. This setting is no longer supported.
 }
 
 // Kafka contains configuration for the Kafka-based orderer.
+
 type Kafka struct {
 	Retry     Retry
 	Verbose   bool
@@ -174,24 +216,31 @@ type Topic struct {
 }
 
 // Debug contains configuration for the orderer's debug parameters.
+// Debug配置了orderer‘s debug 参数
 type Debug struct {
 	BroadcastTraceDir string
 	DeliverTraceDir   string
 }
 
 // Operations configures the operations endpoint for the orderer.
+// 操作配置Operations
+// 1. 日志level操作（不知道干啥。。）
+// 2. 健康检查
+// 3. endpoint 打印版本信息
 type Operations struct {
 	ListenAddress string
 	TLS           TLS
 }
 
 // Metrics configures the metrics provider for the orderer.
+// 指标
 type Metrics struct {
 	Provider string
 	Statsd   Statsd
 }
 
 // Statsd provides the configuration required to emit statsd metrics from the orderer.
+// 统计指标
 type Statsd struct {
 	Network       string
 	Address       string
@@ -207,12 +256,16 @@ type Admin struct {
 
 // ChannelParticipation provides the channel participation API configuration for the orderer.
 // Channel participation uses the same ListenAddress and TLS settings of the Operations service.
+// ChannelParticipation提供channel参与api配置为orderer
+// channel参与提供相同的listenAddress和TLS
+
 type ChannelParticipation struct {
 	Enabled            bool
 	MaxRequestBodySize uint32
 }
 
 // Defaults carries the default orderer configuration values.
+// Defaults 默认配置
 var Defaults = TopLevel{
 	General: General{
 		ListenAddress:   "127.0.0.1",
@@ -303,6 +356,8 @@ func Load() (*TopLevel, error) {
 
 // configCache stores marshalled bytes of config structures that produced from
 // EnhancedExactUnmarshal. Cache key is the path of the configuration file that was used.
+// 存储byte配置文件结构.
+// cache的key是配置文件路径
 type configCache struct {
 	mutex sync.Mutex
 	cache map[string][]byte
@@ -312,20 +367,60 @@ var cache = &configCache{}
 
 // Load will load the configuration and cache it on the first call; subsequent
 // calls will return a clone of the configuration that was previously loaded.
+// load将加载配置文件并且cache他，之后的调用将返回一个先前加载的克隆的配置文件
 func (c *configCache) load() (*TopLevel, error) {
 	var uconf TopLevel
+	// 毒蛇配置...为啥叫这个名字呢
 
+	// ConfigParser holds the configuration file locations.
+	// It keeps the config file directory locations and env variables.
+	// From the file the config is unmarshalled and stored.
+	// Currently "yaml" is supported.
+	// configParser维护配置文件位置
+	// 它保存配置文件路径和环境变量
+	// 从文件配置被加载和存储
+	// 目前yaml被支持
+	// type ConfigParser struct {
+	// 	// configuration file to process
+	// 	configPaths []string
+	// 	configName  string
+	// 	configFile  string
+
+	// 	// parsed config
+	// 	config map[string]interface{}
+	// }
+	// 关于viper的文章
+	// https://blog.biezhi.me/2018/10/load-config-with-viper.html
+	// https://github.com/spf13/viper
 	config := viperutil.New()
+	// 设置configName为orderer
 	config.SetConfigName("orderer")
 
+	// 这里感觉加载配置文件到map[string]interface{}
+	// 配置加载为一个词典
 	if err := config.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("Error reading configuration: %s", err)
 	}
 
+	// 添加锁可能有异步操作吧，后面再看
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
+	// 放进去c.cache
+	// 刚开始没有
+	// config.ConfigFileUsed()配置文件路径，毕竟cache是根据文件路径和配置存储的
 	serializedConf, ok := c.cache[config.ConfigFileUsed()]
 	if !ok {
+		// 来了， TopLevel来了
+		//type ConfigParser struct {
+		// configuration file to process
+		// 	configPaths []string
+		// 	configName  string
+		// 	configFile  string
+
+		// 	// parsed config
+		// 	config map[string]interface{}
+		// }
+		// uconf topLevel
 		err := config.EnhancedExactUnmarshal(&uconf)
 		if err != nil {
 			return nil, fmt.Errorf("Error unmarshalling config into struct: %s", err)
